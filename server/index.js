@@ -6,7 +6,24 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// Configuração de CORS para permitir o teu site no Vercel
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://dizai-nu.vercel.app' // O teu domínio do Vercel
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Permite pedidos sem origin (ex: ferramentas de teste) ou se estiver na lista
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  }
+}));
+
 app.use(express.json());
 
 console.log("🔑 Chave Groq detetada:", process.env.GROQ_API_KEY ? "SIM" : "NÃO");
@@ -44,5 +61,10 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// Rota de teste para o Render não dar erro na página principal
+app.get('/', (req, res) => {
+  res.send('🚀 DizAI Backend está online!');
+});
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 DizAI server a correr na porta ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 DizAI server a correr na porta ${PORT}`));
