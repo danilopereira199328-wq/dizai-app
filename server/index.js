@@ -7,10 +7,10 @@ dotenv.config();
 
 const app = express();
 
-// Configuração de CORS para permitir o teu site no Vercel
+// Configuração de CORS explícita para aceitar o Vercel e o localhost
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://dizai-nu.vercel.app' // O teu domínio do Vercel
+  'https://dizai-nu.vercel.app' // O teu domínio no Vercel
 ];
 
 app.use(cors({
@@ -30,6 +30,7 @@ console.log("🔑 Chave Groq detetada:", process.env.GROQ_API_KEY ? "SIM" : "NÃ
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+// Rota do Chat (Streaming via SSE)
 app.post('/api/chat', async (req, res) => {
   const { messages, model = 'openai/gpt-oss-20b' } = req.body;
 
@@ -61,7 +62,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// Rota de teste para o Render não dar erro na página principal
+// Rota de health check (para o Render não dar erro na página inicial)
 app.get('/', (req, res) => {
   res.send('🚀 DizAI Backend está online!');
 });

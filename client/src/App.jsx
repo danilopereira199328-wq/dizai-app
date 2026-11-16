@@ -2,9 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import './App.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const db = getFirestore();
 
 export default function App() {
   const [messages, setMessages] = useState([
@@ -14,6 +16,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState('openai/gpt-oss-20b');
   const [user, setUser] = useState(null);
+  const [historico, setHistorico] = useState([]);
+  
+  // NOVO: Referência para o AbortController
+  const abortControllerRef = useRef(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -24,8 +30,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      setHistorico([]);
+      return;
+    }
+    const q = query(
+      collection(db, 'conversas', user.uid, 'mensagens'),
+      orderBy('createdAt', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => doc.data());
+      setHistorico(msgs);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, historico]);
 
   const handleLogin = async () => {
     try {
@@ -37,10 +59,16 @@ export default function App() {
 
   const handleLogout = () => signOut(auth);
 
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setLoading(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
-    // Limitação de tokens para o Groq (manter últimas 6 mensagens)
     const systemMessage = messages.find(m => m.role === 'system');
     const recentMessages = messages.filter(m => m.role !== 'system').slice(-6);
     const newMessages = [
@@ -50,14 +78,28 @@ export default function App() {
     ];
 
     setMessages(prev => [...prev, { role: 'user', content: input }]);
+    
+    if (user) {
+      await addDoc(collection(db, 'conversas', user.uid, 'mensagens'), {
+        role: 'user',
+        content: input,
+        createdAt: serverTimestamp(),
+      });
+    }
+
     setInput('');
     setLoading(true);
+
+    // NOVO: Criar o AbortController para este pedido
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
 
     try {
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages, model }),
+        signal: signal, // NOVO: Passar o signal para o fetch
       });
 
       const reader = response.body.getReader();
@@ -85,19 +127,36 @@ export default function App() {
                   return updated;
                 });
               }
-              if (data.error) {
-                assistantMessage += `\n\n❌ Erro: ${data.error}`;
-              }
             } catch (e) {}
           }
         }
       }
+
+      if (user && assistantMessage) {
+        await addDoc(collection(db, 'conversas', user.uid, 'mensagens'), {
+          role: 'assistant',
+          content: assistantMessage,
+          createdAt: serverTimestamp(),
+        });
+      }
+
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', content: `❌ Erro: ${error.message}` }]);
+      // NOVO: Se o erro for por abortar, não mostrar mensagem de erro
+      if (error.name === 'AbortError') {
+        console.log('Geração cancelada pelo utilizador.');
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: `❌ Erro: ${error.message}` }]);
+      }
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
+
+  const todasAsMensagens = [
+    ...historico,
+    ...messages.filter(m => m.role !== 'system')
+  ];
 
   return (
     <div className="app">
@@ -124,7 +183,7 @@ export default function App() {
       </header>
 
       <main className="chat-window">
-        {messages.filter(m => m.role !== 'system').map((msg, i) => (
+        {todasAsMensagens.map((msg, i) => (
           <div key={i} className={`message ${msg.role}`}>
             <div className="avatar">{msg.role === 'user' ? '👤' : '🤖'}</div>
             <div className="bubble">
@@ -154,9 +213,21 @@ export default function App() {
           placeholder="Diz aí... (Enter para enviar)"
           rows={1}
         />
-        <button onClick={sendMessage} disabled={loading || !input.trim()}>
-          {loading ? '⏳' : '➤'}
-        </button>
+        
+        {/* NOVO: Se estiver a carregar, mostra o botão de Parar. Senão, mostra o de Enviar */}
+        {loading ? (
+          <button 
+            onClick={stopGeneration}
+            style={{ background: '#e74c3c', padding: '0 1rem' }}
+            title="Parar geração"
+          >
+            ⏹
+          </button>
+        ) : (
+          <button onClick={sendMessage} disabled={!input.trim()}>
+            ➤
+          </button>
+        )}
       </footer>
     </div>
   );
