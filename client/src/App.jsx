@@ -2,62 +2,93 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { auth, googleProvider } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { 
+  getFirestore, collection, query, orderBy, onSnapshot, 
+  addDoc, serverTimestamp, doc, setDoc, updateDoc, deleteDoc 
+} from 'firebase/firestore';
 import './App.css';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const db = getFirestore();
 
 export default function App() {
-  const [messages, setMessages] = useState([
-    { role: 'system', content: 'És o DizAI, um assistente útil que responde em português de Portugal.' }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState('openai/gpt-oss-20b');
   const [user, setUser] = useState(null);
-  const [historico, setHistorico] = useState([]);
   
-  // NOVO: Referência para o AbortController
+  const [chats, setChats] = useState([]);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Para o mobile
+  
   const abortControllerRef = useRef(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!user) {
-      setHistorico([]);
+      setChats([]);
       return;
     }
-    const q = query(
-      collection(db, 'conversas', user.uid, 'mensagens'),
-      orderBy('createdAt', 'asc')
-    );
+    const q = query(collection(db, 'conversas', user.uid, 'chats'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => doc.data());
-      setHistorico(msgs);
+      const chatList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setChats(chatList);
     });
     return () => unsubscribe();
   }, [user]);
 
   useEffect(() => {
+    if (!user || !currentChatId) {
+      setMessages([]);
+      return;
+    }
+    const q = query(
+      collection(db, 'conversas', user.uid, 'chats', currentChatId, 'mensagens'),
+      orderBy('createdAt', 'asc')
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => doc.data());
+      setMessages(msgs);
+    });
+    return () => unsubscribe();
+  }, [user, currentChatId]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, historico]);
+  }, [messages]);
 
   const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error("Erro no login:", error);
-    }
+    try { await signInWithPopup(auth, googleProvider); } catch (e) { console.error(e); }
+  };
+  const handleLogout = () => signOut(auth);
+
+  const createNewChat = async () => {
+    if (!user) return;
+    const newChatRef = doc(collection(db, 'conversas', user.uid, 'chats'));
+    await setDoc(newChatRef, {
+      title: 'Nova Conversa',
+      createdAt: serverTimestamp()
+    });
+    setCurrentChatId(newChatRef.id);
+    setMessages([]);
+    setSidebarOpen(false); // Fecha a sidebar no mobile
   };
 
-  const handleLogout = () => signOut(auth);
+  const deleteChat = async (e, chatId) => {
+    e.stopPropagation(); // Evita que o clique mude de conversa
+    if (!user) return;
+    await deleteDoc(doc(db, 'conversas', user.uid, 'chats', chatId));
+    if (currentChatId === chatId) {
+      setCurrentChatId(null);
+      setMessages([]);
+    }
+  };
 
   const stopGeneration = () => {
     if (abortControllerRef.current) {
@@ -69,37 +100,45 @@ export default function App() {
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
-    const systemMessage = messages.find(m => m.role === 'system');
-    const recentMessages = messages.filter(m => m.role !== 'system').slice(-6);
-    const newMessages = [
-      ...(systemMessage ? [systemMessage] : []),
-      ...recentMessages,
-      { role: 'user', content: input }
-    ];
+    let chatId = currentChatId;
+    if (!chatId) {
+      const newChatRef = doc(collection(db, 'conversas', user.uid, 'chats'));
+      await setDoc(newChatRef, {
+        title: 'Nova Conversa',
+        createdAt: serverTimestamp()
+      });
+      chatId = newChatRef.id;
+      setCurrentChatId(chatId);
+    }
 
-    setMessages(prev => [...prev, { role: 'user', content: input }]);
+    // Atualiza o título se ainda for "Nova Conversa"
+    const currentChat = chats.find(c => c.id === chatId);
+    if (currentChat && currentChat.title === 'Nova Conversa') {
+      await updateDoc(doc(db, 'conversas', user.uid, 'chats', chatId), {
+        title: input.substring(0, 30) + (input.length > 30 ? '...' : '')
+      });
+    }
+
+    const userMessage = { role: 'user', content: input };
+    setMessages(prev => [...prev, userMessage]);
     
     if (user) {
-      await addDoc(collection(db, 'conversas', user.uid, 'mensagens'), {
-        role: 'user',
-        content: input,
-        createdAt: serverTimestamp(),
+      await addDoc(collection(db, 'conversas', user.uid, 'chats', chatId, 'mensagens'), {
+        ...userMessage,
+        createdAt: serverTimestamp()
       });
     }
 
     setInput('');
     setLoading(true);
-
-    // NOVO: Criar o AbortController para este pedido
     abortControllerRef.current = new AbortController();
-    const signal = abortControllerRef.current.signal;
 
     try {
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, model }),
-        signal: signal, // NOVO: Passar o signal para o fetch
+        body: JSON.stringify({ messages: [...messages, userMessage], model }),
+        signal: abortControllerRef.current.signal,
       });
 
       const reader = response.body.getReader();
@@ -111,10 +150,8 @@ export default function App() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
-
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
@@ -133,18 +170,15 @@ export default function App() {
       }
 
       if (user && assistantMessage) {
-        await addDoc(collection(db, 'conversas', user.uid, 'mensagens'), {
+        await addDoc(collection(db, 'conversas', user.uid, 'chats', chatId, 'mensagens'), {
           role: 'assistant',
           content: assistantMessage,
-          createdAt: serverTimestamp(),
+          createdAt: serverTimestamp()
         });
       }
 
     } catch (error) {
-      // NOVO: Se o erro for por abortar, não mostrar mensagem de erro
-      if (error.name === 'AbortError') {
-        console.log('Geração cancelada pelo utilizador.');
-      } else {
+      if (error.name !== 'AbortError') {
         setMessages(prev => [...prev, { role: 'assistant', content: `❌ Erro: ${error.message}` }]);
       }
     } finally {
@@ -153,82 +187,90 @@ export default function App() {
     }
   };
 
-  const todasAsMensagens = [
-    ...historico,
-    ...messages.filter(m => m.role !== 'system')
-  ];
-
   return (
     <div className="app">
-      <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h1>💬 DizAI</h1>
-          <select value={model} onChange={(e) => setModel(e.target.value)} className="model-select">
-            <option value="openai/gpt-oss-20b">GPT-OSS 20B (rápido)</option>
-            <option value="openai/gpt-oss-120b">GPT-OSS 120B (inteligente)</option>
-          </select>
-        </div>
-        
-        <div>
-          {user ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-              <img src={user.photoURL} alt="Avatar" style={{ width: 32, height: 32, borderRadius: '50%' }} />
-              <span style={{ fontSize: '0.9rem' }}>{user.displayName}</span>
-              <button onClick={handleLogout} className="btn-theme" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>Sair</button>
+      {/* Overlay para fechar sidebar no mobile */}
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)}></div>}
+
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <button onClick={createNewChat} className="new-chat-btn">+ Nova Conversa</button>
+        <div className="chat-list">
+          {chats.map(chat => (
+            <div 
+              key={chat.id} 
+              className={`chat-item ${currentChatId === chat.id ? 'active' : ''}`}
+              onClick={() => { setCurrentChatId(chat.id); setSidebarOpen(false); }}
+            >
+              <span className="chat-title">{chat.title || 'Sem título'}</span>
+              <button className="delete-chat-btn" onClick={(e) => deleteChat(e, chat.id)} title="Apagar">
+                🗑️
+              </button>
             </div>
-          ) : (
-            <button onClick={handleLogin} className="btn-theme" style={{ padding: '0.6rem 1rem' }}>🔑 Entrar com Google</button>
+          ))}
+        </div>
+      </aside>
+
+      <div className="main-chat">
+        <header className="header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button className="menu-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
+            <h1>💬 DizAI</h1>
+            <select value={model} onChange={(e) => setModel(e.target.value)} className="model-select">
+              <option value="openai/gpt-oss-20b">GPT-OSS 20B (rápido)</option>
+              <option value="openai/gpt-oss-120b">GPT-OSS 120B (inteligente)</option>
+            </select>
+          </div>
+          <div>
+            {user ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                <img src={user.photoURL} alt="Avatar" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                <span style={{ fontSize: '0.9rem' }}>{user.displayName}</span>
+                <button onClick={handleLogout} className="btn-theme">Sair</button>
+              </div>
+            ) : (
+              <button onClick={handleLogin} className="btn-theme">🔑 Entrar com Google</button>
+            )}
+          </div>
+        </header>
+
+        <main className="chat-window">
+          {messages.map((msg, i) => (
+            <div key={i} className={`message ${msg.role}`}>
+              <div className="avatar">{msg.role === 'user' ? '👤' : '🤖'}</div>
+              <div className="bubble">
+                <ReactMarkdown>{msg.content}</ReactMarkdown>
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="message assistant">
+              <div className="avatar">🤖</div>
+              <div className="bubble typing"><span></span><span></span><span></span></div>
+            </div>
           )}
-        </div>
-      </header>
+          <div ref={bottomRef} />
+        </main>
 
-      <main className="chat-window">
-        {todasAsMensagens.map((msg, i) => (
-          <div key={i} className={`message ${msg.role}`}>
-            <div className="avatar">{msg.role === 'user' ? '👤' : '🤖'}</div>
-            <div className="bubble">
-              <ReactMarkdown>{msg.content}</ReactMarkdown>
-            </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="message assistant">
-            <div className="avatar">🤖</div>
-            <div className="bubble typing"><span></span><span></span><span></span></div>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </main>
-
-      <footer className="input-area">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              sendMessage();
-            }
-          }}
-          placeholder="Diz aí... (Enter para enviar)"
-          rows={1}
-        />
-        
-        {/* NOVO: Se estiver a carregar, mostra o botão de Parar. Senão, mostra o de Enviar */}
-        {loading ? (
-          <button 
-            onClick={stopGeneration}
-            style={{ background: '#e74c3c', padding: '0 1rem' }}
-            title="Parar geração"
-          >
-            ⏹
-          </button>
-        ) : (
-          <button onClick={sendMessage} disabled={!input.trim()}>
-            ➤
-          </button>
-        )}
-      </footer>
+        <footer className="input-area">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Diz aí..."
+            rows={1}
+          />
+          {loading ? (
+            <button onClick={stopGeneration} className="stop-btn">⏹</button>
+          ) : (
+            <button onClick={sendMessage} disabled={!input.trim()}>➤</button>
+          )}
+        </footer>
+      </div>
     </div>
   );
 }
