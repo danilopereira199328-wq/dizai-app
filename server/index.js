@@ -11,6 +11,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:5173',
   'https://dizai-nu.vercel.app' // O teu domínio no Vercel
+  'https://dizai-frontend.vercel.app'
 ];
 
 app.use(cors({
