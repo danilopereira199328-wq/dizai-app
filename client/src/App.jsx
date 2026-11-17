@@ -190,7 +190,7 @@ export default function App() {
     <div className="app">
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)}></div>}
 
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`} style={{ display: 'flex', transform: 'translateX(0)' }}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <button onClick={createNewChat} className="new-chat-btn">+ Nova Conversa</button>
         <div className="chat-list">
           {chats.map(chat => (
