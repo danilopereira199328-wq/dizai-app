@@ -20,7 +20,7 @@ export default function App() {
   
   const [chats, setChats] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Para o mobile
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   
   const abortControllerRef = useRef(null);
   const bottomRef = useRef(null);
@@ -77,11 +77,11 @@ export default function App() {
     });
     setCurrentChatId(newChatRef.id);
     setMessages([]);
-    setSidebarOpen(false); // Fecha a sidebar no mobile
+    setSidebarOpen(false);
   };
 
   const deleteChat = async (e, chatId) => {
-    e.stopPropagation(); // Evita que o clique mude de conversa
+    e.stopPropagation();
     if (!user) return;
     await deleteDoc(doc(db, 'conversas', user.uid, 'chats', chatId));
     if (currentChatId === chatId) {
@@ -111,7 +111,6 @@ export default function App() {
       setCurrentChatId(chatId);
     }
 
-    // Atualiza o título se ainda for "Nova Conversa"
     const currentChat = chats.find(c => c.id === chatId);
     if (currentChat && currentChat.title === 'Nova Conversa') {
       await updateDoc(doc(db, 'conversas', user.uid, 'chats', chatId), {
@@ -189,10 +188,9 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Overlay para fechar sidebar no mobile */}
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)}></div>}
 
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>   <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`} style={{ display: 'flex', transform: 'translateX(0)' }}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`} style={{ display: 'flex', transform: 'translateX(0)' }}>
         <button onClick={createNewChat} className="new-chat-btn">+ Nova Conversa</button>
         <div className="chat-list">
           {chats.map(chat => (
