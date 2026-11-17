@@ -192,7 +192,7 @@ export default function App() {
       {/* Overlay para fechar sidebar no mobile */}
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)}></div>}
 
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>   <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`} style={{ display: 'flex', transform: 'translateX(0)' }}>
         <button onClick={createNewChat} className="new-chat-btn">+ Nova Conversa</button>
         <div className="chat-list">
           {chats.map(chat => (
