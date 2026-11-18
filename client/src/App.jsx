@@ -22,8 +22,23 @@ export default function App() {
   const [currentChatId, setCurrentChatId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
+  // Tema
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('theme') !== 'light';
+  });
+
   const abortControllerRef = useRef(null);
   const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.remove('light-mode');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.body.classList.add('light-mode');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => setUser(currentUser));
@@ -95,6 +110,21 @@ export default function App() {
       abortControllerRef.current.abort();
       setLoading(false);
     }
+  };
+
+  const exportChat = () => {
+    if (messages.length === 0) return;
+    const chatText = messages.map(msg => 
+      `${msg.role === 'user' ? '👤 Utilizador' : '🤖 DizAI'}:\n${msg.content}\n`
+    ).join('\n---\n\n');
+    
+    const blob = new Blob([chatText], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dizai-conversa-${new Date().toISOString().split('T')[0]}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const sendMessage = async () => {
@@ -217,6 +247,10 @@ export default function App() {
               <option value="openai/gpt-oss-20b">GPT-OSS 20B (rápido)</option>
               <option value="openai/gpt-oss-120b">GPT-OSS 120B (inteligente)</option>
             </select>
+            <button onClick={exportChat} className="btn-theme" title="Exportar Conversa">📥</button>
+            <button onClick={() => setIsDarkMode(!isDarkMode)} className="btn-theme" title="Alternar Tema">
+              {isDarkMode ? '☀️' : '🌙'}
+            </button>
           </div>
           <div>
             {user ? (
