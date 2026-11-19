@@ -1,16 +1,27 @@
-# React + Vite
+# 🎨 Portfólio Pessoal - Danilo Pereira
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Este é o meu portfólio pessoal, desenvolvido para mostrar os meus projetos, competências e experiência como Desenvolvedor Full-Stack.
 
-Currently, two official plugins are available:
+## 🌐 Demo Online
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Podes visitar o portfólio em funcionamento aqui: (https://meu-portfolio-897e.onrender.com)
 
-## React Compiler
+## 🚀 Funcionalidades
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Design Moderno:** Interface limpa e responsiva com Tailwind CSS.
+- **Secção de Projetos:** Galeria com os meus melhores projetos, incluindo imagens, descrições e links para o GitHub e Demo.
+- **Skills:** Lista organizada das tecnologias que domino (Frontend, Backend, Ferramentas).
+- **Contacto:** Links diretos para o meu email, GitHub e LinkedIn.
+- **CV:** Botão para descarregar o meu currículo em PDF.
 
-## Expanding the Oxlint configuration
+## 🛠️ Stack Tecnológica
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **Frontend:** React (Vite)
+- **Estilização:** Tailwind CSS
+- **Deploy:** Render
+
+## 📦 Instalação Local
+
+1. Clona o repositório:
+   ```bash
+   git clone https://github.com/danilopereira199328-wq/meu-portfolio.git
